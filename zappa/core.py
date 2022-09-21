@@ -545,6 +545,7 @@ class Zappa:
         output=None,
         disable_progress=False,
         archive_format="zip",
+        use_layers=False,
     ):
         """
         Create a Lambda-ready zip file of the current virtualenvironment and working directory.
@@ -685,6 +686,7 @@ class Zappa:
             package_id_file.write(str(dumped))
         package_id_file.close()
 
+        print(f"Packaging site-packages... use layers? : {use_layers}")  # @esc5221
         # Then, do site site-packages..
         egg_links = []
         temp_package_path = tempfile.mkdtemp(prefix="zappa-packages")
@@ -694,67 +696,71 @@ class Zappa:
             site_packages = os.path.join(venv, "lib", get_venv_from_python_version(), "site-packages")
         egg_links.extend(glob.glob(os.path.join(site_packages, "*.egg-link")))
 
-        if minify:
-            excludes = ZIP_EXCLUDES + exclude
-            copytree(
-                site_packages,
-                temp_package_path,
-                metadata=False,
-                symlinks=False,
-                ignore=shutil.ignore_patterns(*excludes),
-            )
-        else:
-            copytree(site_packages, temp_package_path, metadata=False, symlinks=False)
-
-        # We may have 64-bin specific packages too.
-        site_packages_64 = os.path.join(venv, "lib64", get_venv_from_python_version(), "site-packages")
-        if os.path.exists(site_packages_64):
-            egg_links.extend(glob.glob(os.path.join(site_packages_64, "*.egg-link")))
+        if not use_layers:
+            print("  - not using layers")
             if minify:
                 excludes = ZIP_EXCLUDES + exclude
                 copytree(
-                    site_packages_64,
+                    site_packages,
                     temp_package_path,
                     metadata=False,
                     symlinks=False,
                     ignore=shutil.ignore_patterns(*excludes),
                 )
             else:
-                copytree(site_packages_64, temp_package_path, metadata=False, symlinks=False)
+                copytree(site_packages, temp_package_path, metadata=False, symlinks=False)
 
-        if egg_links:
-            self.copy_editable_packages(egg_links, temp_package_path)
+            # We may have 64-bin specific packages too.
+            site_packages_64 = os.path.join(venv, "lib64", get_venv_from_python_version(), "site-packages")
+            if os.path.exists(site_packages_64):
+                egg_links.extend(glob.glob(os.path.join(site_packages_64, "*.egg-link")))
+                if minify:
+                    excludes = ZIP_EXCLUDES + exclude
+                    copytree(
+                        site_packages_64,
+                        temp_package_path,
+                        metadata=False,
+                        symlinks=False,
+                        ignore=shutil.ignore_patterns(*excludes),
+                    )
+                else:
+                    copytree(site_packages_64, temp_package_path, metadata=False, symlinks=False)
 
-        copy_tree(temp_package_path, temp_project_path, update=True)
+            if egg_links:
+                self.copy_editable_packages(egg_links, temp_package_path)
 
-        # Then the pre-compiled packages..
-        if use_precompiled_packages:
-            print("Downloading and installing dependencies..")
-            installed_packages = self.get_installed_packages(site_packages, site_packages_64)
+            copy_tree(temp_package_path, temp_project_path, update=True)
 
-            try:
-                for (
-                    installed_package_name,
-                    installed_package_version,
-                ) in installed_packages.items():
-                    cached_wheel_path = self.get_cached_manylinux_wheel(
+            # Then the pre-compiled packages..
+            if use_precompiled_packages:
+                print("Downloading and installing dependencies..")
+                installed_packages = self.get_installed_packages(site_packages, site_packages_64)
+
+                try:
+                    for (
                         installed_package_name,
                         installed_package_version,
-                        disable_progress,
-                    )
-                    if cached_wheel_path:
-                        # Otherwise try to use manylinux packages from PyPi..
-                        # Related: https://github.com/Miserlou/Zappa/issues/398
-                        shutil.rmtree(
-                            os.path.join(temp_project_path, installed_package_name),
-                            ignore_errors=True,
+                    ) in installed_packages.items():
+                        cached_wheel_path = self.get_cached_manylinux_wheel(
+                            installed_package_name,
+                            installed_package_version,
+                            disable_progress,
                         )
-                        with zipfile.ZipFile(cached_wheel_path) as zfile:
-                            zfile.extractall(temp_project_path)
+                        if cached_wheel_path:
+                            # Otherwise try to use manylinux packages from PyPi..
+                            # Related: https://github.com/Miserlou/Zappa/issues/398
+                            shutil.rmtree(
+                                os.path.join(temp_project_path, installed_package_name),
+                                ignore_errors=True,
+                            )
+                            with zipfile.ZipFile(cached_wheel_path) as zfile:
+                                zfile.extractall(temp_project_path)
 
-            except Exception as e:
-                print(e)
-                # XXX - What should we do here?
+                except Exception as e:
+                    print(e)
+                    # XXX - What should we do here?
+        else:
+            print("  - using layers, skip site-packages")
 
         # Cleanup
         for glob_path in exclude_glob:

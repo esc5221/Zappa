@@ -2444,6 +2444,7 @@ class ZappaCLI:
                 exclude_glob=self.stage_config.get("exclude_glob", []),
                 output=output,
                 disable_progress=self.disable_progress,
+                use_layers=bool(self.layers), # @esc5221 - pass use_layers to create_lambda_zip
             )
 
             # Warn if this is too large for Lambda.
