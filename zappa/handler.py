@@ -451,6 +451,11 @@ class LambdaHandler:
 
             # Couldn't figure out how to get the value into stdout with StringIO..
             # Read the log for now. :[]
+            cmd = event["manage"].split(" ")
+            if "shell_plus" in cmd:
+                cmd = event["manage"].split("-c")
+                management.call_command(*cmd[0].split(" "), "-c", cmd[1])
+                return {}
             management.call_command(*event["manage"].split(" "))
             return {}
 
