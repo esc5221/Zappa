@@ -453,7 +453,8 @@ class LambdaHandler:
             # Read the log for now. :[]
             cmd = event["manage"].split(" ")
             if "shell_plus" in cmd:
-                cmd = event["manage"].split("-c")
+                cmd = event["manage"].split(" -c ")
+                print(*cmd[0].split(" "),"-c", cmd[1])
                 management.call_command(*cmd[0].split(" "), "-c", cmd[1])
                 return {}
             management.call_command(*event["manage"].split(" "))
