@@ -67,6 +67,7 @@ CUSTOM_SETTINGS = [
 
 BOTO3_CONFIG_DOCS_URL = "https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration"
 
+
 ##
 # Main Input Processing
 ##
@@ -117,6 +118,7 @@ class ZappaCLI:
     xray_tracing = False
     aws_kms_key_arn = ""
     context_header_mappings = None
+    additional_text_mimetypes = None
     tags = []
     layers = None
 
@@ -575,7 +577,6 @@ class ZappaCLI:
         elif command == "rollback":  # pragma: no cover
             self.rollback(self.vargs["num_rollback"])
         elif command == "invoke":  # pragma: no cover
-
             if not self.vargs.get("command_rest"):
                 print("Please enter the function to invoke.")
                 return
@@ -586,7 +587,6 @@ class ZappaCLI:
                 no_color=self.vargs["no_color"],
             )
         elif command == "manage":  # pragma: no cover
-
             if not self.vargs.get("command_rest"):
                 print("Please enter the management command to invoke.")
                 return
@@ -850,7 +850,6 @@ class ZappaCLI:
             self.zappa.deploy_lambda_alb(**kwargs)
 
         if self.use_apigateway:
-
             # Create and configure the API Gateway
             self.zappa.create_stack_template(
                 lambda_arn=self.lambda_arn,
@@ -1064,7 +1063,6 @@ class ZappaCLI:
                 self.remove_local_zip()
 
         if self.use_apigateway:
-
             self.zappa.create_stack_template(
                 lambda_arn=self.lambda_arn,
                 lambda_name=self.lambda_name,
@@ -1431,7 +1429,6 @@ class ZappaCLI:
         final_string = string
 
         try:
-
             # Line headers
             try:
                 for token in ["START", "END", "REPORT", "[DEBUG]"]:
@@ -1630,7 +1627,7 @@ class ZappaCLI:
         """
 
         non_strings = []
-        for (k, v) in environment.items():
+        for k, v in environment.items():
             if not isinstance(v, str):
                 non_strings.append(k)
         if non_strings:
@@ -2142,7 +2139,6 @@ class ZappaCLI:
                 module_ = working_dir_importer.find_module(mod_name).load_module(mod_name)
 
             except (ImportError, AttributeError):
-
                 try:  # Callback func might be in virtualenv
                     module_ = importlib.import_module(mod_path)
                 except ImportError:  # pragma: no cover
@@ -2290,6 +2286,11 @@ class ZappaCLI:
         self.xray_tracing = self.stage_config.get("xray_tracing", False)
         self.desired_role_arn = self.stage_config.get("role_arn")
         self.layers = self.stage_config.get("layers", None)
+        self.additional_text_mimetypes = self.stage_config.get("additional_text_mimetypes", None)
+
+        # check that BINARY_SUPPORT is True if additional_text_mimetypes is provided
+        if self.additional_text_mimetypes and not self.binary_support:
+            raise ClickException("zappa_settings.json has additional_text_mimetypes defined, but binary_support is False!")
 
         # Load ALB-related settings
         self.use_alb = self.stage_config.get("alb_enabled", False)
@@ -2462,7 +2463,6 @@ class ZappaCLI:
             handler_zip = self.zip_path
 
         with zipfile.ZipFile(handler_zip, "a") as lambda_zip:
-
             settings_s = self.get_zappa_settings_string()
 
             # Copy our Django app into root of our package.
@@ -2623,6 +2623,10 @@ class ZappaCLI:
         # async response
         async_response_table = self.stage_config.get("async_response_table", "")
         settings_s += "ASYNC_RESPONSE_TABLE='{0!s}'\n".format(async_response_table)
+
+        # additional_text_mimetypes
+        additional_text_mimetypes = self.stage_config.get("additional_text_mimetypes", [])
+        settings_s += f"ADDITIONAL_TEXT_MIMETYPES={additional_text_mimetypes}\n"
         return settings_s
 
     def remove_local_zip(self):
@@ -2744,7 +2748,6 @@ class ZappaCLI:
 
         final_string = string
         try:
-
             # First, do stuff in square brackets
             inside_squares = re.findall(r"\[([^]]*)\]", string)
             for token in inside_squares:
@@ -2832,7 +2835,6 @@ class ZappaCLI:
             module_ = working_dir_importer.find_module(mod_name).load_module(mod_name)
 
         except (ImportError, AttributeError):
-
             try:  # Prebuild func might be in virtualenv
                 module_ = importlib.import_module(pb_mod_path)
             except ImportError:  # pragma: no cover
