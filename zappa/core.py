@@ -262,6 +262,7 @@ class Zappa:
     apigateway_policy = None
     cloudwatch_log_levels = ["OFF", "ERROR", "INFO"]
     xray_tracing = False
+    architecture = None
 
     ##
     # Credentials
@@ -282,6 +283,7 @@ class Zappa:
         tags=(),
         endpoint_urls={},
         xray_tracing=False,
+        architecture=None
     ):
         """
         Instantiate this new Zappa instance, loading any custom credentials if necessary.
@@ -306,11 +308,16 @@ class Zappa:
         # TODO: Support PEP600 properly (https://peps.python.org/pep-0600/)
         self.manylinux_suffix_start = f"cp{self.runtime[6:].replace('.', '')}"
         self.manylinux_suffixes = ("_2_24", "2014", "2010", "1")
-        # TODO: Support aarch64 architecture
+        manylinux_suffixes = ("_2_24", "2014", "2010", "1")
         self.manylinux_wheel_file_match = re.compile(
-            rf'^.*{self.manylinux_suffix_start}-(manylinux_\d+_\d+_x86_64[.])?manylinux({"|".join(self.manylinux_suffixes)})_x86_64[.]whl$'  # noqa: E501
+            f'^.*{self.manylinux_suffix_start}-(manylinux_\d+_\d+_{self.architecture}[.])?manylinux({"|".join(manylinux_suffixes)})_{self.architecture}[.]whl$'
         )
-        self.manylinux_wheel_abi3_file_match = re.compile(r"^.*cp3.-abi3-manylinux.*_x86_64[.]whl$")
+        self.manylinux_wheel_abi3_file_match = re.compile(
+            f'^.*cp3.-abi3-manylinux({"|".join(manylinux_suffixes)})_{self.architecture}.whl$'
+        )
+
+        if not self.architecture:
+            self.architecture = "x86_64"
 
         self.endpoint_urls = endpoint_urls
         self.xray_tracing = xray_tracing
@@ -690,7 +697,7 @@ class Zappa:
             if egg_links:
                 self.copy_editable_packages(egg_links, temp_package_path)
 
-            copy_tree(temp_package_path, temp_project_path, update=True)
+            copytree(temp_package_path, temp_project_path)
 
             # Then the pre-compiled packages..
             if use_precompiled_packages:
@@ -961,6 +968,7 @@ class Zappa:
             elif re.match(self.manylinux_wheel_abi3_file_match, f["filename"]):
                 for manylinux_suffix in self.manylinux_suffixes:
                     if f"manylinux{manylinux_suffix}_x86_64" in f["filename"]:
+                        logger.info(f" - {package_name}=={package_version}: Using locally cached manylinux wheel")
                         return f["url"], f["filename"].lower()
         return None, None
 
@@ -1077,10 +1085,10 @@ class Zappa:
 
     def create_lambda_function(
         self,
-        bucket=None,
-        function_name=None,
-        handler=None,
-        s3_key=None,
+        bucket,
+        s3_key,
+        function_name,
+        handler,
         description="Zappa Deployment",
         timeout=30,
         memory_size=512,
@@ -1091,13 +1099,13 @@ class Zappa:
         runtime="python3.8",
         aws_environment_variables=None,
         aws_kms_key_arn=None,
-        snap_start=None,
         xray_tracing=False,
         local_zip=None,
         use_alb=False,
         layers=None,
         concurrency=None,
         docker_image_uri=None,
+        architecture=None
     ):
         """
         Given a bucket and key (or a local path) of a valid Lambda-zip,
@@ -1105,14 +1113,12 @@ class Zappa:
         """
         if not vpc_config:
             vpc_config = {}
-        if not dead_letter_config:
-            dead_letter_config = {}
         if not self.credentials_arn:
             self.get_credentials_arn()
-        if not aws_environment_variables:
-            aws_environment_variables = {}
         if not aws_kms_key_arn:
             aws_kms_key_arn = ""
+        if not aws_environment_variables:
+            aws_environment_variables = {}
         if not layers:
             layers = []
 
@@ -1129,8 +1135,8 @@ class Zappa:
             Environment={"Variables": aws_environment_variables},
             KMSKeyArn=aws_kms_key_arn,
             TracingConfig={"Mode": "Active" if self.xray_tracing else "PassThrough"},
-            SnapStart={"ApplyOn": snap_start if snap_start else "None"},
             Layers=layers,
+            Architectures=architecture,
         )
         if not docker_image_uri:
             kwargs["Runtime"] = runtime
@@ -1189,6 +1195,7 @@ class Zappa:
         num_revisions=None,
         concurrency=None,
         docker_image_uri=None,
+        architecture=None
     ):
         """
         Given a bucket and key (or a local path) of a valid Lambda-zip,
@@ -1281,6 +1288,7 @@ class Zappa:
         layers=None,
         snap_start=None,
         wait=True,
+        architecture=None
     ):
         """
         Given an existing function ARN, update the configuration variables.

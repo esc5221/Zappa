@@ -124,6 +124,7 @@ class ZappaCLI:
     additional_text_mimetypes = None
     tags = []  # type: ignore[var-annotated]
     layers = None
+    architecture = None
 
     stage_name_env_pattern = re.compile("^[a-zA-Z0-9_]+$")
 
@@ -820,6 +821,7 @@ class ZappaCLI:
                 use_alb=self.use_alb,
                 layers=self.layers,
                 concurrency=self.lambda_concurrency,
+                architecture=self.architecture,
             )
             kwargs["function_name"] = self.lambda_name
             if docker_image_uri:
@@ -1027,6 +1029,7 @@ class ZappaCLI:
             function_name=self.lambda_name,
             num_revisions=self.num_retained_versions,
             concurrency=self.lambda_concurrency,
+            architecture=self.architecture,
         )
         if docker_image_uri:
             kwargs["docker_image_uri"] = docker_image_uri
@@ -1065,6 +1068,7 @@ class ZappaCLI:
             layers=self.layers,
             snap_start=self.snap_start,
             wait=False,
+            architecture=self.architecture,
         )
 
         # Finally, delete the local copy our zip package
@@ -2319,6 +2323,9 @@ class ZappaCLI:
         # Additional tags
         self.tags = self.stage_config.get("tags", {})
 
+        # Architectures
+        self.architecture = [self.stage_config.get("architecture", "x86_64")]
+
         desired_role_name = self.lambda_name + "-ZappaLambdaExecutionRole"
         self.zappa = Zappa(
             boto_session=session,
@@ -2331,6 +2338,7 @@ class ZappaCLI:
             tags=self.tags,
             endpoint_urls=self.stage_config.get("aws_endpoint_urls", {}),
             xray_tracing=self.xray_tracing,
+            architecture=self.architecture
         )
 
         for setting in CUSTOM_SETTINGS:
